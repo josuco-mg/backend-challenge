@@ -1,0 +1,59 @@
+version: "3.9"
+services:
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - postgres
+    environment:
+      - DB_HOST=postgres
+      - DB_PASSWORD=ecg
+      - API_HOST=app
+      - PYTHONDONTWRITEBYTECODE=1
+      - DJANGO_SUPERUSER_USERNAME=admin
+      - DJANGO_SUPERUSER_PASSWORD=admin
+      - DJANGO_SUPERUSER_EMAIL=admin@ecg.com
+    volumes:
+      - ./src:/src
+      - ./tests:/tests
+    ports:
+      - "5005:80"
+    command: >
+      sh -c "python /tests/wait_for_postgres.py &&
+             python /src/web/manage.py migrate &&
+             python /src/web/manage.py createsuperuser --noinput || true &&
+             python /src/web/manage.py runserver 0.0.0.0:80"
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DB_HOST=postgres
+      - DB_PASSWORD=ecg
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      - ./src:/src
+    ports:
+      - "5555:5555"
+    working_dir: /src/web
+    command: >
+      sh -c "celery -A config.celery_app worker -l INFO"
+
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=ecg
+      - POSTGRES_PASSWORD=ecg
+    ports:
+      - "54321:5432"
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"

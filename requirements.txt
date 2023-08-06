@@ -1,0 +1,15 @@
+# common
+celery[redis]==5.3.1
+django==4.2.4
+djangorestframework==3.14.0
+djangorestframework-simplejwt==5.2.2
+dj-database-url==2.0.0
+numpy==1.25.1
+psycopg2-binary==2.9.6
+pydantic==2.1.1
+
+# dev
+pytest==7.4.0
+pytest-django==4.5.2
+pytest-icdiff==0.6
+requests==2.31.0
