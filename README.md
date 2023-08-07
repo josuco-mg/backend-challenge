@@ -1,40 +1,126 @@
-# Backend Coding Challenge
+## Author
 
-The first thing is to welcome you to this test, congratulations for successfully passing the previous steps, thank you
-for the time invested in the process and of course good luck.
+Jose Antonio Martin
 
-At Idoven we have a need, we want to set up a microservice that receives electrocardiograms (ECG) and returns a series
-of information about them, for example, calculating the number of zero crossings of the signal.
+## Introduction
 
-An ECG is represented by a series of numerical values that can be either positive or negative.
+This project contains a dockerized application that implements a REST API for managing ECGs.
 
-The idea is to set up an API that acts as a service and with two endpoints, one to receive the ECGs to be processed and
-another where we return information.
+The stack is based on Python/Django, PostgreSQL for the database, and Celery for running background tasks (with Redis as broker).
 
-ECGs have this structure:
+The architecture tries to follow Domain Driven Design principles, and the code is fully tested.
 
-```
-- id: unique identifier for each ECG
-- date: creation date
-- leads: list of:
-  - name: lead identifier (for example: I, II, III, aVR, aVL and aVF, V1, V2…)
-  - number of samples: sample size of the signal, this value does not always come
-  - signal: list of integer values
-```
+## Requirements
 
-The information that the endpoint must return will be the number of times that each of the ECG channels passes through
-zero. For now we do not need more information.
+You need Docker and Docker Compose installed in your system.
 
-Freedom is given to use language, technologies, frameworks, documentation, tests... We currently use Python 3.10.9,
-FastAPI, JIRA, GitHub.
+You will also need some kind of API testing tool (I recommend [HTTPie](https://httpie.io/)).
 
-It must be taken into account that this service is going to scale, and more functionalities are going to be added to it
-and the endpoint of obtaining information about an ECG is going to calculate more data.
+## Quick start
 
-In addition, we are thinking of opening this service to external clients, so we are considering using a user
-authentication system for both endpoints. And with the necessary security to only be able to access the ECGs created by
-yourself.
-And it would be nice to have an ADMIN role that is in charge of registering new users. This user would not have access
-to send or obtain information about the ECGs.
+There is a makefile with some useful commands, but you'll probably only need the following:
 
-The test solution must be posted on this repository like a pull request.
+- `make up`: runs the whole stack.
+- `make test`: runs the test suite.
+
+## API
+
+The functionality exposed by the API is limited to the following:
+
+- Obtain a JWT token for authentication, providing a username and password.
+- Create a new user.
+- Create a new ECG.
+- Obtain the stats for a given ECG.
+
+Some endpoints require authentication. In those cases, a valid JWT token must be provided in the `Authorization` header (`Bearer` scheme).
+
+An initial admin user is created on startup, with username `admin` and password `admin`.
+
+The API exposes the following endpoints, available locally on `localhost:5005`:
+
+- `POST /api/token/`: obtains a JWT token for authentication.
+  - Requires authentication: no.
+  - Payload:
+    ```json
+    {
+      "username": string,
+      "password": string
+    }
+    ```
+  - Returns:
+    ```json
+    {
+      "access": string,
+      "refresh": string
+    }
+    ```
+  - HTTPie example: `http POST localhost:5005/api/token/ username=admin password=admin`
+
+- `POST /api/users/`: creates a new user.
+  - Requires authentication: yes (limited to admin users).
+  - Payload:
+    ```json
+    {
+      "username": string,
+      "password": string,
+      "is_admin": boolean (optional)
+    }
+    ```
+  - Returns:
+    ```json
+    {
+      "id": integer,
+    }
+    ```
+  - HTTPie example: `http POST localhost:5005/api/users/ username=creator password=creator authorization:"Bearer <token>"`
+
+- `POST /api/ecgs/`: creates a new ECG.
+  - Requires authentication: yes (limited to regular users).
+  - Payload:
+    ```json
+    {
+      "lead_results": [
+        {
+          "lead": string,
+          "signal": [integer, ...],
+          "num_samples": integer (optional)
+        },
+        ...
+      ]
+    }
+    ```
+  - Returns:
+    ```json
+    {
+      "id": 0,
+    }
+    ```
+  - HTTPie example: `http POST localhost:5005/api/ecgs/ lead_results:='[{"lead": "I", "signal": [1, -1, 1, -1]}, {"lead": "II", "signal": [1, 1, 1, 1]}]' authorization:"Bearer <token>"`
+
+- `GET /api/ecgs/{id}/stats/`: returns the stats for the given ECG.
+  - Requires authentication: yes (limited to the owner of the ECG).
+  - Returns:
+    ```json
+    {
+      "lead_results": [
+        {
+          "lead": string,
+          "zero_crossing_count": integer
+        },
+        ...
+      ]
+    }
+    ```
+  - HTTPie example: `http GET localhost:5005/api/ecgs/{id}/stats/ authorization:"Bearer <token>"`
+
+## Architecture
+
+There are three main components:
+
+- The account module: contains the high level User domain model, a repository adapter to abstract the persistence layer, and required user services/use cases.
+- The ecg module: same as the account module, but for the ECG/ECGLeadResult domain models.
+- The Django application, that implements the API and the concrete persistence layer (against PostgreSQL).
+
+The aim is achieving dependency inversion, so that the domain is not coupled to the persistence layer or the API.
+
+I used a unit of work pattern too, to abstract the concept of atomic operations away from the services.
